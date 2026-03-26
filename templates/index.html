@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Training classes{% endblock %}
+{% block body %}
+<h1>Training classes</h1>
+<p>Images live in <code>data/training/&lt;class&gt;/</code>. Train the k-NN model after you have at least two classes with photos.</p>
+
+<div class="row">
+  <form method="post" action="{{ url_for('class_add') }}">
+    <label>New class name<br>
+      <input type="text" name="name" placeholder="e.g. Giraffe" required style="width:16rem;padding:0.4rem;">
+    </label>
+    <button type="submit">Add class</button>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('train') }}" onsubmit="return confirm('Train model from all classes?');">
+  <button type="submit">Train model</button>
+</form>
+
+{% if slugs %}
+<table>
+  <thead><tr><th>Class</th><th>Images</th><th></th></tr></thead>
+  <tbody>
+    {% for s in slugs %}
+    <tr>
+      <td><a href="{{ url_for('class_detail', slug=s) }}">{{ s }}</a></td>
+      <td>{{ counts[s] }}</td>
+      <td>
+        <form method="post" action="{{ url_for('class_delete', slug=s) }}" style="display:inline" onsubmit="return confirm('Delete class {{ s }} and all images?');">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No classes yet. Add one above.</p>
+{% endif %}
+
+<p style="margin-top:2rem;font-size:0.9rem;opacity:0.8">Then run <code>python app.py</code> for the live camera view.</p>
+{% endblock %}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Hand pose training{% endblock %}</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #1a1a1e; color: #e8e8ec; }
+    a { color: #8cb4ff; }
+    main { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    .flash { padding: 0.6rem 1rem; border-radius: 6px; margin: 0.5rem 0; }
+    .flash.ok { background: #1e3d2e; border: 1px solid #3d8c5a; }
+    .flash.error { background: #3d1e1e; border: 1px solid #c44; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; }
+    button, .btn {
+      background: #3a3a44; color: #eee; border: 1px solid #555;
+      padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer;
+      font-size: 0.9rem; text-decoration: none; display: inline-block;
+    }
+    button.danger { border-color: #a44; color: #faa; }
+    input[type="text"], input[type="file"] { margin: 0.25rem 0; }
+    h1 { font-size: 1.35rem; }
+    .row { margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="{{ url_for('index') }}">Classes</a></p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}{{ slug }}{% endblock %}
+{% block body %}
+<h1>Class: {{ slug }}</h1>
+<p><a href="{{ url_for('index') }}">← Back</a></p>
+
+<div class="row webcam-block">
+  <h2 style="font-size:1rem;">Webcam capture</h2>
+  <p class="hint">Uses your browser camera (same machine as this page). Stop the camera when done to free the device.</p>
+  <video id="wc-video" class="wc-video" playsinline muted autoplay></video>
+  <canvas id="wc-canvas" hidden></canvas>
+  <div class="wc-controls">
+    <label class="wc-label">Camera
+      <select id="wc-device" disabled aria-label="Camera device"></select>
+    </label>
+    <button type="button" id="wc-start">Start camera</button>
+    <button type="button" id="wc-stop" disabled>Stop</button>
+    <button type="button" id="wc-capture" disabled>Capture</button>
+  </div>
+  <p id="wc-error" class="wc-error" role="alert" hidden></p>
+</div>
+
+<div class="row">
+  <h2 style="font-size:1rem;">Upload images</h2>
+  <form method="post" action="{{ url_for('class_upload', slug=slug) }}" enctype="multipart/form-data">
+    <input type="file" name="files" multiple accept="image/*">
+    <button type="submit">Upload</button>
+  </form>
+</div>
+
+<div class="row">
+  <h2 style="font-size:1rem;">Display image (shown in main app)</h2>
+  <form method="post" action="{{ url_for('display_first', slug=slug) }}" style="display:inline;">
+    <button type="submit">Use first training image</button>
+  </form>
+  <form method="post" action="{{ url_for('display_upload', slug=slug) }}" enctype="multipart/form-data" style="display:inline;margin-left:0.5rem;">
+    <input type="file" name="file" accept="image/*">
+    <button type="submit">Upload display</button>
+  </form>
+</div>
+
+<h2 style="font-size:1rem;margin-top:1.5rem;">Images ({{ images|length }})</h2>
+{% if images %}
+<ul class="image-list">
+  {% for im in images %}
+  <li class="image-row">
+    <a href="{{ url_for('training_image', slug=slug, filename=im.name) }}" target="_blank" rel="noopener" class="thumb-link">
+      <img src="{{ url_for('training_image', slug=slug, filename=im.name) }}" alt="" class="thumb" width="120" height="90" loading="lazy">
+    </a>
+    <div class="image-meta">
+      <code>{{ im.name }}</code>
+      <form method="post" action="{{ url_for('image_delete', slug=slug) }}" style="display:inline" onsubmit="return confirm('Delete {{ im.name }}?');">
+        <input type="hidden" name="filename" value="{{ im.name }}">
+        <button type="submit" class="danger">Remove</button>
+      </form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No images yet.</p>
+{% endif %}
+
+<style>
+  .webcam-block { margin: 1rem 0; }
+  .hint { font-size: 0.85rem; color: #aaa; margin: 0.25rem 0 0.75rem; }
+  .wc-video {
+    display: block;
+    max-width: 100%;
+    max-height: 360px;
+    background: #111;
+    border-radius: 8px;
+    border: 1px solid #444;
+  }
+  .wc-controls { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .wc-label { font-size: 0.9rem; display: flex; align-items: center; gap: 0.35rem; }
+  .wc-label select { min-width: 12rem; max-width: 100%; }
+  .wc-error { color: #f88; font-size: 0.9rem; margin-top: 0.5rem; }
+  .image-list { list-style: none; padding: 0; margin: 0; }
+  .image-row {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .thumb-link { flex-shrink: 0; line-height: 0; }
+  .thumb {
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #444;
+    vertical-align: middle;
+  }
+  .image-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+</style>
+
+<script>
+(function () {
+  const uploadUrl = {{ url_for('class_upload', slug=slug) | tojson }};
+  const video = document.getElementById('wc-video');
+  const canvas = document.getElementById('wc-canvas');
+  const btnStart = document.getElementById('wc-start');
+  const btnStop = document.getElementById('wc-stop');
+  const btnCapture = document.getElementById('wc-capture');
+  const select = document.getElementById('wc-device');
+  const errEl = document.getElementById('wc-error');
+
+  let stream = null;
+
+  function showError(msg) {
+    errEl.textContent = msg;
+    errEl.hidden = !msg;
+  }
+
+  function stopStream() {
+    if (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      stream = null;
+    }
+    video.srcObject = null;
+    btnStop.disabled = true;
+    btnCapture.disabled = true;
+  }
+
+  async function fillDeviceList() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter(function (d) { return d.kind === 'videoinput'; });
+    const currentId = stream && stream.getVideoTracks()[0]
+      ? stream.getVideoTracks()[0].getSettings().deviceId
+      : '';
+    select.innerHTML = '';
+    inputs.forEach(function (d, i) {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ('Camera ' + (i + 1));
+      select.appendChild(opt);
+    });
+    if (currentId) {
+      select.value = currentId;
+    } else if (inputs.length && select.options.length) {
+      select.selectedIndex = 0;
+    }
+    select.disabled = inputs.length === 0;
+  }
+
+  async function startStream(deviceId) {
+    showError('');
+    stopStream();
+    const videoConstraints = deviceId
+      ? { deviceId: { exact: deviceId } }
+      : true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+    } catch (e) {
+      showError('Could not open camera: ' + (e.message || String(e)));
+      return;
+    }
+    video.srcObject = stream;
+    btnStop.disabled = false;
+    btnCapture.disabled = false;
+    await fillDeviceList();
+  }
+
+  btnStart.addEventListener('click', function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError('This browser does not support camera access from a web page.');
+      return;
+    }
+    const id = select.value || undefined;
+    startStream(id);
+  });
+
+  btnStop.addEventListener('click', function () {
+    showError('');
+    stopStream();
+  });
+
+  select.addEventListener('change', function () {
+    if (!stream) return;
+    const id = select.value;
+    const track = stream.getVideoTracks()[0];
+    const cur = track && track.getSettings().deviceId;
+    if (id && id !== cur) startStream(id);
+  });
+
+  btnCapture.addEventListener('click', function () {
+    showError('');
+    if (!stream || video.readyState < 2) {
+      showError('Camera not ready yet.');
+      return;
+    }
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (!w || !h) {
+      showError('No video frame size yet; wait a moment and try again.');
+      return;
+    }
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    canvas.toBlob(function (blob) {
+      if (!blob) {
+        showError('Could not encode image.');
+        return;
+      }
+      const fd = new FormData();
+      fd.append('files', blob, 'capture.jpg');
+      fetch(uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin', redirect: 'follow' })
+        .then(function (res) {
+          if (res.ok) {
+            window.location.reload();
+          } else {
+            showError('Upload failed (HTTP ' + res.status + ').');
+          }
+        })
+        .catch(function (e) {
+          showError('Upload failed: ' + (e.message || String(e)));
+        });
+    }, 'image/jpeg', 0.92);
+  });
+})();
+</script>
+{% endblock %}

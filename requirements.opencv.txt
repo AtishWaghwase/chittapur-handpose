@@ -1,0 +1,3 @@
+-r requirements.txt
+
+# OpenCV-only fallback profile (no MediaPipe package).

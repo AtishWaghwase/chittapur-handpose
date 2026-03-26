@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Prefer Raspberry-Pi specific MediaPipe builds on Pi.
+# Try rpi4 first on Pi 5; if unavailable for your Python/OS combo, use fallback requirements.opencv.txt.
+mediapipe-rpi4

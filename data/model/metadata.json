@@ -1,0 +1,13 @@
+{
+  "feature_version": "norm_wrist_scale_v1",
+  "labels": [
+    "gnu",
+    "ostrich"
+  ],
+  "class_counts": {
+    "gnu": 6,
+    "ostrich": 6
+  },
+  "n_neighbors": 3,
+  "skipped_images": 0
+}
