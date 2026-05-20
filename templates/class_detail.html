@@ -5,19 +5,17 @@
 <p><a href="{{ url_for('index') }}">← Back</a></p>
 
 <div class="row webcam-block">
-  <h2 style="font-size:1rem;">Webcam capture</h2>
-  <p class="hint">Uses your browser camera (same machine as this page). Stop the camera when done to free the device.</p>
-  <video id="wc-video" class="wc-video" playsinline muted autoplay></video>
-  <canvas id="wc-canvas" hidden></canvas>
+  <h2 style="font-size:1rem;">Camera capture (NoIR)</h2>
+  <p class="hint">Streams directly from the NoIR camera on the Pi. Start the preview, then click Capture to save a training frame.</p>
+  <img id="cam-img" class="wc-video" alt="Camera preview" hidden style="transform:scaleX(-1);">
   <div class="wc-controls">
-    <label class="wc-label">Camera
-      <select id="wc-device" disabled aria-label="Camera device"></select>
-    </label>
-    <button type="button" id="wc-start">Start camera</button>
-    <button type="button" id="wc-stop" disabled>Stop</button>
-    <button type="button" id="wc-capture" disabled>Capture</button>
+    <button type="button" id="cam-start">Start preview</button>
+    <button type="button" id="cam-stop" disabled>Stop</button>
+    <form method="post" action="{{ url_for('camera_capture', slug=slug) }}" style="display:inline">
+      <button type="submit" id="cam-capture" disabled>Capture frame</button>
+    </form>
   </div>
-  <p id="wc-error" class="wc-error" role="alert" hidden></p>
+  <p id="cam-error" class="wc-error" role="alert" hidden></p>
 </div>
 
 <div class="row">
@@ -97,129 +95,36 @@
 
 <script>
 (function () {
-  const uploadUrl = {{ url_for('class_upload', slug=slug) | tojson }};
-  const video = document.getElementById('wc-video');
-  const canvas = document.getElementById('wc-canvas');
-  const btnStart = document.getElementById('wc-start');
-  const btnStop = document.getElementById('wc-stop');
-  const btnCapture = document.getElementById('wc-capture');
-  const select = document.getElementById('wc-device');
-  const errEl = document.getElementById('wc-error');
-
-  let stream = null;
+  const img = document.getElementById('cam-img');
+  const btnStart = document.getElementById('cam-start');
+  const btnStop = document.getElementById('cam-stop');
+  const btnCapture = document.getElementById('cam-capture');
+  const errEl = document.getElementById('cam-error');
 
   function showError(msg) {
     errEl.textContent = msg;
     errEl.hidden = !msg;
   }
 
-  function stopStream() {
-    if (stream) {
-      stream.getTracks().forEach(function (t) { t.stop(); });
-      stream = null;
-    }
-    video.srcObject = null;
-    btnStop.disabled = true;
-    btnCapture.disabled = true;
-  }
-
-  async function fillDeviceList() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const inputs = devices.filter(function (d) { return d.kind === 'videoinput'; });
-    const currentId = stream && stream.getVideoTracks()[0]
-      ? stream.getVideoTracks()[0].getSettings().deviceId
-      : '';
-    select.innerHTML = '';
-    inputs.forEach(function (d, i) {
-      const opt = document.createElement('option');
-      opt.value = d.deviceId;
-      opt.textContent = d.label || ('Camera ' + (i + 1));
-      select.appendChild(opt);
-    });
-    if (currentId) {
-      select.value = currentId;
-    } else if (inputs.length && select.options.length) {
-      select.selectedIndex = 0;
-    }
-    select.disabled = inputs.length === 0;
-  }
-
-  async function startStream(deviceId) {
+  btnStart.addEventListener('click', function () {
     showError('');
-    stopStream();
-    const videoConstraints = deviceId
-      ? { deviceId: { exact: deviceId } }
-      : true;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-    } catch (e) {
-      showError('Could not open camera: ' + (e.message || String(e)));
-      return;
-    }
-    video.srcObject = stream;
+    img.src = '/camera/stream?' + Date.now();
+    img.hidden = false;
+    img.onerror = function () {
+      showError('Camera stream unavailable — check the camera is connected and not in use by another process.');
+    };
+    btnStart.disabled = true;
     btnStop.disabled = false;
     btnCapture.disabled = false;
-    await fillDeviceList();
-  }
-
-  btnStart.addEventListener('click', function () {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showError('This browser does not support camera access from a web page.');
-      return;
-    }
-    const id = select.value || undefined;
-    startStream(id);
   });
 
   btnStop.addEventListener('click', function () {
+    img.src = '';
+    img.hidden = true;
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    btnCapture.disabled = true;
     showError('');
-    stopStream();
-  });
-
-  select.addEventListener('change', function () {
-    if (!stream) return;
-    const id = select.value;
-    const track = stream.getVideoTracks()[0];
-    const cur = track && track.getSettings().deviceId;
-    if (id && id !== cur) startStream(id);
-  });
-
-  btnCapture.addEventListener('click', function () {
-    showError('');
-    if (!stream || video.readyState < 2) {
-      showError('Camera not ready yet.');
-      return;
-    }
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) {
-      showError('No video frame size yet; wait a moment and try again.');
-      return;
-    }
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, w, h);
-    canvas.toBlob(function (blob) {
-      if (!blob) {
-        showError('Could not encode image.');
-        return;
-      }
-      const fd = new FormData();
-      fd.append('files', blob, 'capture.jpg');
-      fetch(uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin', redirect: 'follow' })
-        .then(function (res) {
-          if (res.ok) {
-            window.location.reload();
-          } else {
-            showError('Upload failed (HTTP ' + res.status + ').');
-          }
-        })
-        .catch(function (e) {
-          showError('Upload failed: ' + (e.message || String(e)));
-        });
-    }, 'image/jpeg', 0.92);
   });
 })();
 </script>

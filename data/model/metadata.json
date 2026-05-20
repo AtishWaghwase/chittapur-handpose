@@ -1,12 +1,31 @@
 {
   "feature_version": "norm_wrist_scale_v1",
+  "feature_backend": "mediapipe_solutions",
   "labels": [
-    "gnu",
-    "ostrich"
+    "back-l",
+    "bat-eared-fox-l",
+    "crowned-guinea-fowl-l",
+    "eland-l",
+    "front-l",
+    "gnu-l",
+    "hartebeest-l",
+    "hawk-l",
+    "ostrich-l",
+    "pangolin-l",
+    "porcupine-l"
   ],
   "class_counts": {
-    "gnu": 6,
-    "ostrich": 6
+    "back-l": 7,
+    "bat-eared-fox-l": 7,
+    "crowned-guinea-fowl-l": 7,
+    "eland-l": 7,
+    "front-l": 7,
+    "gnu-l": 7,
+    "hartebeest-l": 7,
+    "hawk-l": 7,
+    "ostrich-l": 7,
+    "pangolin-l": 7,
+    "porcupine-l": 7
   },
   "n_neighbors": 3,
   "skipped_images": 0

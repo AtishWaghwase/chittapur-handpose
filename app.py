@@ -56,7 +56,7 @@ def resize_fit(im: np.ndarray, box_w: int, box_h: int) -> np.ndarray:
     return canvas
 
 
-def video_capture_open(index: int) -> cv2.VideoCapture:
+def video_capture_open(index: int):
     if platform.system() == "Darwin":
         backend = getattr(cv2, "CAP_AVFOUNDATION", None)
         if backend is not None:
@@ -64,6 +64,13 @@ def video_capture_open(index: int) -> cv2.VideoCapture:
             if cap.isOpened():
                 return cap
             cap.release()
+    elif platform.system() == "Linux":
+        try:
+            from picam_capture import Picamera2Capture, _num_picamera2_cameras
+            if index < _num_picamera2_cameras():
+                return Picamera2Capture(index)
+        except ImportError:
+            pass
     return cv2.VideoCapture(index)
 
 

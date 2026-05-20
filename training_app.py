@@ -8,12 +8,16 @@ import mimetypes
 import re
 import shutil
 import tempfile
+import threading
+import time
 import webbrowser
 from pathlib import Path
 from threading import Timer
 
+import cv2
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     redirect,
@@ -202,6 +206,107 @@ def train():
     else:
         flash(msg, "error")
     return redirect(url_for("index"))
+
+
+class CameraThread:
+    """Background thread that continuously reads frames from the NoIR camera via picamera2."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._frame = None
+        self._running = False
+        self._started = False
+        self._thread: threading.Thread | None = None
+        self.error: str | None = None
+
+    def ensure_started(self) -> None:
+        if self._started:
+            return
+        self._started = True
+        self._running = True
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        try:
+            from picamera2 import Picamera2
+            pc2 = Picamera2()
+            config = pc2.create_video_configuration(
+                main={"size": (640, 480), "format": "BGR888"}
+            )
+            pc2.configure(config)
+            pc2.start()
+            try:
+                while self._running:
+                    frame = pc2.capture_array("main")
+                    with self._lock:
+                        self._frame = frame.copy()
+            finally:
+                pc2.stop()
+                pc2.close()
+        except Exception as exc:
+            self.error = str(exc)
+            self._running = False
+
+    def get_frame(self):
+        with self._lock:
+            return self._frame.copy() if self._frame is not None else None
+
+
+_camera = CameraThread()
+
+
+@app.get("/camera/stream")
+def camera_stream():
+    """MJPEG stream from the NoIR camera."""
+    _camera.ensure_started()
+
+    def generate():
+        while True:
+            try:
+                frame = _camera.get_frame()
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+                ret, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ret:
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n"
+                        + jpeg.tobytes()
+                        + b"\r\n"
+                    )
+                time.sleep(0.08)  # ~12 fps
+            except GeneratorExit:
+                break
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.post("/class/<slug>/capture")
+def camera_capture(slug: str):
+    """Capture a single frame from the NoIR camera and save as a training image."""
+    if not _slug_ok(slug) or slug not in list_class_slugs(PROJECT_ROOT):
+        flash("Unknown class.", "error")
+        return redirect(url_for("index"))
+    _camera.ensure_started()
+    frame = _camera.get_frame()
+    if frame is None:
+        flash("Camera not ready — click Start preview first.", "error")
+        return redirect(url_for("class_detail", slug=slug))
+    ret, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ret:
+        flash("Failed to encode frame.", "error")
+        return redirect(url_for("class_detail", slug=slug))
+    tmpdir = Path(tempfile.mkdtemp())
+    tmp = tmpdir / "capture.jpg"
+    try:
+        tmp.write_bytes(bytes(jpeg_buf))
+        n = len(import_images(slug, [tmp], PROJECT_ROOT))
+        flash(f"Saved {n} frame(s) to training data.", "ok")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    return redirect(url_for("class_detail", slug=slug))
 
 
 def main() -> None:
