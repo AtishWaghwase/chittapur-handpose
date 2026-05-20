@@ -1,0 +1,19 @@
+# Virtual environment
+myenv/
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Training data & model (large / machine-specific)
+data/training/
+data/model/
+data/display/
+
+# macOS metadata
+.DS_Store
+._*

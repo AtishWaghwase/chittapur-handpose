@@ -1,5 +1,13 @@
 -r requirements.txt
 
-# Prefer Raspberry-Pi specific MediaPipe builds on Pi.
-# Try rpi4 first on Pi 5; if unavailable for your Python/OS combo, use fallback requirements.opencv.txt.
-mediapipe-rpi4
+# MediaPipe for Raspberry Pi (aarch64, Python 3.11+).
+# Install inside a venv with --system-site-packages so that
+# picamera2, numpy, and scikit-learn from the OS are inherited:
+#
+#   sudo apt install python3-pip python3-virtualenv libatlas-base-dev \
+#                    python3-opencv python3-sklearn python3-joblib python3-picamera2
+#   python3 -m venv myenv --system-site-packages
+#   source myenv/bin/activate
+#   pip install mediapipe opencv-python
+#
+mediapipe>=0.10.0
